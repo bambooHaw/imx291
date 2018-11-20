@@ -357,21 +357,33 @@ static int imx291_detect(int fd)
 {
 	ioctl_args_t a;
 	
-	//IdH ->0xa0
+	//IdH ->0x71
 	bzero(&a, sizeof(ioctl_args_t));
 	a.rdwrFlag = 0;
-	a.regH = 0x30;
-	a.regL = 0x08;
-	ioctl(fd, 0xff, &a);
-	printf("read idH: %#x\n\n", a.val);
-	//idL -> 0xb2
-	bzero(&a, sizeof(ioctl_args_t));
-	a.rdwrFlag = 0;
-	a.regH = 0x30;
-	a.regL = 0x1e;
-	ioctl(fd, 0xff, &a);
-	printf("read idL: %#x\n\n", a.val);
+	a.regH = 0xff;
+	a.regL = 0xfb;
+#if 0
+	//test
+	while(1)
+	{
+		ioctl(fd, 0xff, &a);
+	}
+	//test end
+#else
 	
+	ioctl(fd, 0xff, &a);
+	printf("read id0: %#x\n\n", a.val);
+#endif 
+
+#if 1
+	//idL -> 0x60
+	bzero(&a, sizeof(ioctl_args_t));
+	a.rdwrFlag = 0;
+	a.regH = 0xff;
+	a.regL = 0xfc;
+	ioctl(fd, 0xff, &a);
+	printf("read id1: %#x\n\n", a.val);
+#endif 
 	return 0;
 }
 
@@ -381,7 +393,7 @@ int main(int argc, char* argv[])
 	int fd;
 	ioctl_args_t a;
 
-	fd = open("/dev/imx291", O_RDWR);
+	fd = open("/dev/xc7022", O_RDWR);
 	if(fd < 0)
 	{
 		perror("open");
@@ -389,7 +401,7 @@ int main(int argc, char* argv[])
 	}else
 	{
 		imx291_detect(fd);
-		imx291_write_array(fd, imx291_init_regs_1920_1080_25fps);
+		//imx291_write_array(fd, imx291_init_regs_1920_1080_25fps);
 		//imx291_read_array(fd, imx291_init_regs_1920_1080_25fps);
 		close(fd);
 	}

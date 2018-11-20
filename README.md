@@ -1,2 +1,7 @@
-# imx291
-simple i2c driver and app for imx291
+### imx291
+```bash
+GPL
+```
+1. simple i2c driver
+2. app for imx291 and xc7022
+3. app for detect iic device id

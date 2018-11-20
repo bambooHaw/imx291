@@ -17,7 +17,7 @@
 
 
 #define DRIVER_VERSION "V0.0.1"
-#define SENSOR_NAME "imx291"
+#define SENSOR_NAME "xc7022"
 #define DEVICE_NODE_NAME SENSOR_NAME
 #define HENRY_DEBUG_EN	1
 #define HENRY_DEBUG_LV	1
@@ -83,6 +83,8 @@ int i2c_read_a16_d8(struct i2c_client *client, unsigned char regH, unsigned char
 		printk(KERN_EMERG "rxbuf[0]: %#x, rxbuf[1]: %#x\n", rxbuf[0], rxbuf[1]);
 	}
 
+	printk(KERN_ALERT "addr:%#x\n", client->addr);
+	
 	return rxbuf[0];
 }
 
@@ -143,66 +145,68 @@ long imx291_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 
 	
-struct file_operations sensor_imx291_fops = {
+static struct file_operations sensor_fops = {
 	.owner		= THIS_MODULE,
 	.open		= imx291_open,
 	.release	= imx291_release,
 	.unlocked_ioctl = imx291_ioctl,
 };
 
-struct miscdevice sensor_imx291_misc = {
+static struct miscdevice sensor_miscdevice = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = DEVICE_NODE_NAME,
-	.fops = &sensor_imx291_fops,
+	.fops = &sensor_fops,
 
 };
 
-int sensor_imx291_probe(struct i2c_client *client, const struct i2c_device_id *id)
+int i2c_device_probe_handler(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int ret;
 	
-	ret = misc_register(&sensor_imx291_misc);
+	ret = misc_register(&sensor_miscdevice);
 	if(ret)
 	{
-//		printk(KERN_ERR "misc register failed.\n");
 		printk(KERN_ERR "misc register failed.!\n");
 	}else
 	{
 		gInfo.client = client;
+		printk(KERN_CRIT "%s", __func__);
 	}
 	
 	return ret;
 }
 
-int sensor_imx291_remove(struct i2c_client *client)
+int i2c_device_remove_handler(struct i2c_client *client)
 {
 	int ret = 0;
 
-	ret = misc_deregister(&sensor_imx291_misc);
+	ret = misc_deregister(&sensor_miscdevice);
 	if(ret)
 	{
 		printk(KERN_ERR "sensor remove failed.\n");
+	}else
+	{
+		henry_debbug();
 	}
 	
-	henry_debbug();
 	return 0;
 }
-	
-const struct i2c_device_id sensor_imx291_id[] = {
-	{SENSOR_NAME, 0},
+
+const struct i2c_device_id i2c_device_id_list[] = {
+	{SENSOR_NAME, 0x1b},
 	{ }
 };
 	
-MODULE_DEVICE_TABLE(i2c, sensor_imx291_id);
+MODULE_DEVICE_TABLE(i2c, i2c_device_id_list);
 
-static struct i2c_driver sensor_imx291_i2c_driver = {
+static struct i2c_driver i2c_driver_obj = {
   .driver = {
   	.owner = THIS_MODULE,
 	.name = SENSOR_NAME,
   },
-  .probe = sensor_imx291_probe,
-  .remove = sensor_imx291_remove,
-  .id_table = sensor_imx291_id,
+  .probe = i2c_device_probe_handler,
+  .remove = i2c_device_remove_handler,
+  .id_table = i2c_device_id_list,
 };
 
 int register_gpio_for_i2c(void)
@@ -244,12 +248,18 @@ int register_gpio_for_i2c(void)
 void unregister_gpio_for_i2c(void)
 {
 	if(gInfo.regdat)
+	{
 		iounmap(gInfo.regdat);
+		gInfo.regdat = NULL;
+	}
 	if(gInfo.regcfg)
+	{
 		iounmap(gInfo.regcfg);
+		gInfo.regcfg = NULL;
+	}
 }
 
-static int __init init_sensor_imx291(void)
+static int __init init_iic_sensor(void)
 {
 	int ret = 0;
 
@@ -259,7 +269,7 @@ static int __init init_sensor_imx291(void)
 		printk(KERN_ERR "register gpio for i2c failed.\n");
 	}else
 	{
-		ret = i2c_add_driver(&sensor_imx291_i2c_driver);
+		ret = i2c_add_driver(&i2c_driver_obj);
 		if(ret)
 		{
 			printk(KERN_ERR "i2c add driver failed.\n");
@@ -270,11 +280,11 @@ static int __init init_sensor_imx291(void)
 	return ret;
 }
 
-static void __exit exit_sensor_imx291(void)
+static void __exit exit_iic_sensor(void)
 {
 	if(gInfo.regdat && gInfo.regcfg)
 	{
-		i2c_del_driver(&sensor_imx291_i2c_driver);
+		i2c_del_driver(&i2c_driver_obj);
 	}
 	
 	unregister_gpio_for_i2c();
@@ -283,8 +293,8 @@ static void __exit exit_sensor_imx291(void)
 	return;
 }
 
-module_init(init_sensor_imx291);
-module_exit(exit_sensor_imx291);
+module_init(init_iic_sensor);
+module_exit(exit_iic_sensor);
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRIVER_VERSION);
-MODULE_DESCRIPTION("Accessing imx291 i2c interface @by haoxiansen@zhitongits.com.cn");
+MODULE_DESCRIPTION(" I2c driver sample accessing demo @by haoxiansen@zhitongits.com.cn");
