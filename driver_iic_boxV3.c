@@ -17,8 +17,15 @@
 
 
 #define DRIVER_VERSION "V0.0.1"
-#define SENSOR_NAME "xc7022"
-#define DEVICE_NODE_NAME SENSOR_NAME
+#define SENSOR_NAME_XC "xc7022"
+#define SENSOR_I2CADDR_XC 0x1b
+
+#define SENSOR_NAME_IMX	"imx291"
+#define SENSOR_I2CADDR_IMX 0x1a
+
+#define DEVICE_NODE_NAME_IMX SENSOR_NAME_IMX
+#define DEVICE_NODE_NAME_XC SENSOR_NAME_XC
+
 #define HENRY_DEBUG_EN	1
 #define HENRY_DEBUG_LV	1
 
@@ -27,7 +34,7 @@
 typedef struct _global_private {
 	void __iomem *regcfg;
 	void __iomem *regdat;
-	struct i2c_client *client;
+	struct i2c_client *client[2];	//0: imx291, 1: xc7022 
 }global_private_t;
 
 typedef struct _ioctl_args{
@@ -80,10 +87,10 @@ int i2c_read_a16_d8(struct i2c_client *client, unsigned char regH, unsigned char
 		return ret;
 	}else
 	{
-		printk(KERN_EMERG "rxbuf[0]: %#x, rxbuf[1]: %#x\n", rxbuf[0], rxbuf[1]);
+		//printk(KERN_EMERG "rxbuf[0]: %#x, rxbuf[1]: %#x\n", rxbuf[0], rxbuf[1]);
 	}
 
-	printk(KERN_ALERT "addr:%#x\n", client->addr);
+	//printk(KERN_ALERT "addr:%#x\n", client->addr);
 	
 	return rxbuf[0];
 }
@@ -98,42 +105,75 @@ int i2c_write_a16_d8(struct i2c_client *client, unsigned char regH, unsigned cha
 
 	i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
 
+	
 	return 0;
 }
 
 
-int imx291_open(struct inode *inode, struct file *file) 
+int iic_sensor_open(struct inode *inode, struct file *file) 
 {
 	henry_debbug();
 
 	return 0;
 }
 
-int imx291_release(struct inode *inode, struct file *file) 
+int iic_sensor_release(struct inode *inode, struct file *file) 
 {
 	henry_debbug();
 	return 0;
 }
 
-long imx291_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+long iic_sensor_ioctl_imx(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	ioctl_args_t* argp = (ioctl_args_t*)arg;
-	printk(KERN_EMERG "rdwrFlag:%d, regH:%#x, regL:%#x, val:%#x\n", argp->rdwrFlag, argp->regH, argp->regL, argp->val);
 
 	switch(argp->rdwrFlag){
 	case 0:
 	{
-		argp->val = i2c_read_a16_d8(gInfo.client, argp->regH, argp->regL);
+		argp->val = i2c_read_a16_d8(gInfo.client[0], argp->regH, argp->regL);
+		printk(KERN_EMERG "read-> [%#x%x] : %#x\n", argp->regH, argp->regL, argp->val);
 		break;
 	}
 	case 1:
 	{
-		ret = i2c_write_a16_d8(gInfo.client, argp->regH, argp->regL, argp->val);
+		printk(KERN_EMERG "write-> [%#x%x] : %#x\n", argp->regH, argp->regL, argp->val);
+		ret = i2c_write_a16_d8(gInfo.client[0], argp->regH, argp->regL, argp->val);
 		break;
 	}
 	default:
 	{
+		printk(KERN_ERR "Error: file: %s, func: %s(line: %d)\n", __FILE__, __func__, __LINE__);
+		break;
+	}
+	}
+	
+//	if (copy_to_user((void *)arg, &data, sizeof(data)));
+
+	return 0;
+}
+
+long iic_sensor_ioctl_xc(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	int ret = 0;
+	ioctl_args_t* argp = (ioctl_args_t*)arg;
+
+	switch(argp->rdwrFlag){
+	case 0:
+	{
+		argp->val = i2c_read_a16_d8(gInfo.client[1], argp->regH, argp->regL);
+		printk(KERN_EMERG "read-> [%#x%x] : %#x\n", argp->regH, argp->regL, argp->val);
+		break;
+	}
+	case 1:
+	{
+		printk(KERN_EMERG "write-> [%#x%x] : %#x\n", argp->regH, argp->regL, argp->val);
+		ret = i2c_write_a16_d8(gInfo.client[1], argp->regH, argp->regL, argp->val);
+		break;
+	}
+	default:
+	{
+		printk(KERN_ERR "Error: file: %s, func: %s(line: %d)\n", __FILE__, __func__, __LINE__);
 		break;
 	}
 	}
@@ -145,32 +185,63 @@ long imx291_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 
 	
-static struct file_operations sensor_fops = {
+static struct file_operations sensor_fops_imx = {
 	.owner		= THIS_MODULE,
-	.open		= imx291_open,
-	.release	= imx291_release,
-	.unlocked_ioctl = imx291_ioctl,
+	.open		= iic_sensor_open,
+	.release	= iic_sensor_release,
+	.unlocked_ioctl = iic_sensor_ioctl_imx,
 };
 
-static struct miscdevice sensor_miscdevice = {
-	.minor = MISC_DYNAMIC_MINOR,
-	.name = DEVICE_NODE_NAME,
-	.fops = &sensor_fops,
+	
+static struct file_operations sensor_fops_xc = {
+	.owner		= THIS_MODULE,
+	.open		= iic_sensor_open,
+	.release	= iic_sensor_release,
+	.unlocked_ioctl = iic_sensor_ioctl_xc,
+};
 
+static struct miscdevice sensor_miscdevice_xc = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = DEVICE_NODE_NAME_XC,
+	.fops = &sensor_fops_xc,
+};
+	
+static struct miscdevice sensor_miscdevice_imx = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = DEVICE_NODE_NAME_IMX,
+	.fops = &sensor_fops_imx,
 };
 
 int i2c_device_probe_handler(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int ret;
-	
-	ret = misc_register(&sensor_miscdevice);
-	if(ret)
+
+	if(0 == strcmp(id->name, SENSOR_NAME_IMX))
 	{
-		printk(KERN_ERR "misc register failed.!\n");
+		ret = misc_register(&sensor_miscdevice_imx);
+		if(ret)
+		{
+			printk(KERN_ERR "misc register IMX291 failed.!\n");
+		}else
+		{
+			gInfo.client[0] = client;
+			printk(KERN_CRIT "%s", __func__);
+		}
+	}else if(0 == strcmp(id->name, SENSOR_NAME_XC))
+	{
+		ret = misc_register(&sensor_miscdevice_xc);
+		if(ret)
+		{
+			printk(KERN_ERR "misc register XC7022 failed.!\n");
+		}else
+		{
+			gInfo.client[1] = client;
+			printk(KERN_CRIT "%s", __func__);
+		}
 	}else
 	{
-		gInfo.client = client;
-		printk(KERN_CRIT "%s", __func__);
+		ret = -EIO;
+		printk(KERN_ERR "Error: Wrong i2c_device_id.\n");
 	}
 	
 	return ret;
@@ -180,10 +251,19 @@ int i2c_device_remove_handler(struct i2c_client *client)
 {
 	int ret = 0;
 
-	ret = misc_deregister(&sensor_miscdevice);
+	ret = misc_deregister(&sensor_miscdevice_imx);
 	if(ret)
 	{
-		printk(KERN_ERR "sensor remove failed.\n");
+		printk(KERN_ERR "sensor imx291 remove failed.\n");
+	}else
+	{
+		henry_debbug();
+	}
+
+	ret = misc_deregister(&sensor_miscdevice_xc);
+	if(ret)
+	{
+		printk(KERN_ERR "sensor xc7022 remove failed.\n");
 	}else
 	{
 		henry_debbug();
@@ -193,7 +273,8 @@ int i2c_device_remove_handler(struct i2c_client *client)
 }
 
 const struct i2c_device_id i2c_device_id_list[] = {
-	{SENSOR_NAME, 0x1b},
+	{SENSOR_NAME_XC, SENSOR_I2CADDR_XC},
+	{SENSOR_NAME_IMX, SENSOR_I2CADDR_IMX},
 	{ }
 };
 	
@@ -202,7 +283,7 @@ MODULE_DEVICE_TABLE(i2c, i2c_device_id_list);
 static struct i2c_driver i2c_driver_obj = {
   .driver = {
   	.owner = THIS_MODULE,
-	.name = SENSOR_NAME,
+	.name = SENSOR_NAME_XC,
   },
   .probe = i2c_device_probe_handler,
   .remove = i2c_device_remove_handler,
@@ -262,6 +343,10 @@ void unregister_gpio_for_i2c(void)
 static int __init init_iic_sensor(void)
 {
 	int ret = 0;
+
+	//
+	memset(&gInfo, 0, sizeof(global_private_t));
+	//
 
 	ret = register_gpio_for_i2c();
 	if(ret)
